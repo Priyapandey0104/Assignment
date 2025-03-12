@@ -1,272 +1,167 @@
-I'll provide the complete Java code for your NETCONF Automation Tool, along with instructions for setting up GNS3 to test it.
+Here’s the complete code for Java KeyStore management (KeyStoreUtil.java) and User Authentication (UserAuth.java).
 
 
 ---
 
-1. GNS3 Setup for NETCONF Testing
+1. KeyStore Management (KeyStoreUtil.java)
 
-To simulate network devices supporting NETCONF, follow these steps:
+This class securely stores and retrieves passwords using Java KeyStore (JKS).
 
-Step 1: Install GNS3
+Steps:
 
-Download and install GNS3 from https://www.gns3.com/.
+Create a KeyStore file (keystore.jks).
 
-Install GNS3 VM (if using Windows/Mac).
+Store the router’s credentials securely.
 
+Retrieve credentials when needed.
 
-Step 2: Add a Router with NETCONF Support
-
-Use Cisco IOSv, IOS-XE, or Juniper vSRX (supports NETCONF).
-
-Upload a compatible IOS image (e.g., cisco-iosv.bin or csr1000v.iso).
-
-Start a router and enable NETCONF using the following command in the CLI:
-
-configure terminal
-netconf-yang
-end
-write memory
-
-
-Step 3: Enable SSH & User Authentication
-
-configure terminal
-hostname Router1
-ip domain-name example.com
-crypto key generate rsa modulus 2048
-username admin privilege 15 secret admin123
-aaa new-model
-line vty 0 4
-transport input ssh
-login local
-exit
-
-Step 4: Verify NETCONF is Running
-
-show netconf-yang sessions
 
 
 ---
 
-2. Java-Based NETCONF Automation Tool
+KeyStore Utility Class
 
-Now, let’s implement the Java tool.
+package com.wipro.CapstoneProject.authentication;
 
-Project Structure
+import java.io.*;
+import java.security.*;
+import java.security.cert.CertificateException;
+import javax.crypto.*;
+import javax.crypto.spec.SecretKeySpec;
 
-CapstoneProject/
-│── src/main/java/com/wipro/CapstoneProject/
-│   ├── authentication/
-│   │   ├── KeyStoreUtil.java
-│   │   ├── UserAuth.java
-│   ├── config/
-│   │   ├── ConfigBackup.java
-│   │   ├── ConfigRestore.java
-│   │   ├── NetconfManager.java
-│   ├── discovery/
-│   │   ├── DeviceDiscovery.java
-│   ├── logging/
-│   │   ├── LoggerUtil.java
-│   ├── ui/
-│   │   ├── CLI.java
-│   ├── App.java
-│── pom.xml
+public class KeyStoreUtil {
+    private static final String KEYSTORE_FILE = "keystore.jks";
+    private static final String KEYSTORE_PASSWORD = "keystore123";
+    private static final String KEY_ALIAS = "netconf-user";
 
-Step 1: Add Dependencies (pom.xml)
+    // Initialize KeyStore
+    public static void createKeyStore() throws Exception {
+        File file = new File(KEYSTORE_FILE);
+        if (!file.exists()) {
+            KeyStore keyStore = KeyStore.getInstance("JCEKS");
+            keyStore.load(null, KEYSTORE_PASSWORD.toCharArray());
 
-<dependencies>
-    <dependency>
-        <groupId>org.opendaylight.netconf</groupId>
-        <artifactId>netconf-client</artifactId>
-        <version>YOUR_VERSION</version>
-    </dependency>
-    <dependency>
-        <groupId>com.jcraft</groupId>
-        <artifactId>jsch</artifactId>
-        <version>0.1.55</version>
-    </dependency>
-    <dependency>
-        <groupId>org.apache.logging.log4j</groupId>
-        <artifactId>log4j-core</artifactId>
-        <version>2.14.1</version>
-    </dependency>
-</dependencies>
+            try (FileOutputStream fos = new FileOutputStream(KEYSTORE_FILE)) {
+                keyStore.store(fos, KEYSTORE_PASSWORD.toCharArray());
+            }
 
-
----
-
-Step 2: NETCONF Manager (NetconfManager.java)
-
-Handles connecting to network devices via NETCONF.
-
-package com.wipro.CapstoneProject.config;
-
-import org.opendaylight.netconf.client.NetconfClientSession;
-import org.opendaylight.netconf.client.NetconfClient;
-import org.opendaylight.netconf.client.NetconfClientDispatcher;
-import org.opendaylight.yangtools.util.concurrent.FluentFutures;
-import java.net.InetSocketAddress;
-
-public class NetconfManager {
-    private NetconfClientSession session;
-
-    public void connect(String ip, int port, String username, String password) throws Exception {
-        NetconfClientDispatcher dispatcher = new NetconfClientDispatcher();
-        NetconfClient client = dispatcher.createClient();
-        
-        session = client.connect(new InetSocketAddress(ip, port), username, password).get();
-        System.out.println("Connected to " + ip);
-    }
-
-    public String getConfig(String filter) throws Exception {
-        String rpc = "<rpc message-id='1' xmlns='urn:ietf:params:xml:ns:netconf:base:1.0'>"
-                   + "<get><filter type='subtree'>" + filter + "</filter></get></rpc>";
-
-        return session.sendRpc(rpc).get().toString();
-    }
-
-    public void editConfig(String configData) throws Exception {
-        String rpc = "<rpc message-id='2' xmlns='urn:ietf:params:xml:ns:netconf:base:1.0'>"
-                   + "<edit-config><target><running/></target><config>" + configData + "</config></edit-config></rpc>";
-
-        session.sendRpc(rpc).get();
-        System.out.println("Configuration updated!");
-    }
-
-    public void disconnect() {
-        if (session != null) {
-            session.close();
-            System.out.println("Disconnected.");
+            System.out.println("New KeyStore created.");
         }
+    }
+
+    // Store credentials
+    public static void storeCredentials(String username, String password) throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("JCEKS");
+        try (FileInputStream fis = new FileInputStream(KEYSTORE_FILE)) {
+            keyStore.load(fis, KEYSTORE_PASSWORD.toCharArray());
+        }
+
+        SecretKey secretKey = new SecretKeySpec(password.getBytes(), "AES");
+        KeyStore.SecretKeyEntry keyEntry = new KeyStore.SecretKeyEntry(secretKey);
+        KeyStore.ProtectionParameter protectionParam = new KeyStore.PasswordProtection(KEYSTORE_PASSWORD.toCharArray());
+
+        keyStore.setEntry(KEY_ALIAS, keyEntry, protectionParam);
+
+        try (FileOutputStream fos = new FileOutputStream(KEYSTORE_FILE)) {
+            keyStore.store(fos, KEYSTORE_PASSWORD.toCharArray());
+        }
+
+        System.out.println("Credentials stored securely.");
+    }
+
+    // Retrieve password
+    public static String getStoredPassword() throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("JCEKS");
+        try (FileInputStream fis = new FileInputStream(KEYSTORE_FILE)) {
+            keyStore.load(fis, KEYSTORE_PASSWORD.toCharArray());
+        }
+
+        KeyStore.ProtectionParameter protectionParam = new KeyStore.PasswordProtection(KEYSTORE_PASSWORD.toCharArray());
+        KeyStore.SecretKeyEntry keyEntry = (KeyStore.SecretKeyEntry) keyStore.getEntry(KEY_ALIAS, protectionParam);
+        SecretKey secretKey = keyEntry.getSecretKey();
+
+        return new String(secretKey.getEncoded());
     }
 }
 
 
 ---
 
-Step 3: Device Discovery (DeviceDiscovery.java)
+2. User Authentication (UserAuth.java)
 
-Scans IP addresses to check for NETCONF access.
+This class authenticates users by verifying the username and retrieving the password from Java KeyStore.
 
-package com.wipro.CapstoneProject.discovery;
 
-import com.jcraft.jsch.*;
+---
 
-public class DeviceDiscovery {
-    public static boolean checkNetconf(String ip, String user, String pass) {
+User Authentication Class
+
+package com.wipro.CapstoneProject.authentication;
+
+import java.util.Scanner;
+
+public class UserAuth {
+    public static boolean authenticate() {
+        Scanner scanner = new Scanner(System.in);
+
+        System.out.print("Enter Username: ");
+        String username = scanner.nextLine();
+
         try {
-            JSch jsch = new JSch();
-            Session session = jsch.getSession(user, ip, 22);
-            session.setPassword(pass);
-            session.setConfig("StrictHostKeyChecking", "no");
-            session.connect(5000);
-            
-            System.out.println("NETCONF enabled on: " + ip);
-            session.disconnect();
-            return true;
+            String storedPassword = KeyStoreUtil.getStoredPassword();
+
+            System.out.print("Enter Password: ");
+            String password = scanner.nextLine();
+
+            if (storedPassword.equals(password)) {
+                System.out.println("Authentication Successful!");
+                return true;
+            } else {
+                System.out.println("Invalid credentials. Access Denied!");
+                return false;
+            }
         } catch (Exception e) {
-            System.out.println("No NETCONF on: " + ip);
+            System.out.println("Error retrieving credentials: " + e.getMessage());
             return false;
         }
     }
-}
 
+    public static void main(String[] args) {
+        try {
+            // Initialize KeyStore if not present
+            KeyStoreUtil.createKeyStore();
 
----
+            // Store credentials (one-time setup)
+            KeyStoreUtil.storeCredentials("admin", "admin123");
 
-Step 4: Backup & Restore (ConfigBackup.java & ConfigRestore.java)
-
-Backup Config:
-
-package com.wipro.CapstoneProject.config;
-
-import java.nio.file.*;
-
-public class ConfigBackup {
-    public static void saveBackup(String data) throws Exception {
-        Files.write(Paths.get("backup.xml"), data.getBytes(), StandardOpenOption.CREATE);
-        System.out.println("Backup saved.");
-    }
-}
-
-Restore Config:
-
-package com.wipro.CapstoneProject.config;
-
-import java.nio.file.*;
-
-public class ConfigRestore {
-    public static String restoreBackup() throws Exception {
-        return new String(Files.readAllBytes(Paths.get("backup.xml")));
-    }
-}
-
-
----
-
-Step 5: Logging (LoggerUtil.java)
-
-package com.wipro.CapstoneProject.logging;
-
-import java.util.logging.*;
-
-public class LoggerUtil {
-    private static final Logger logger = Logger.getLogger(LoggerUtil.class.getName());
-
-    public static void log(String message) {
-        logger.log(Level.INFO, message);
-    }
-}
-
-
----
-
-Step 6: CLI (CLI.java)
-
-package com.wipro.CapstoneProject.ui;
-
-import java.util.Scanner;
-import com.wipro.CapstoneProject.config.*;
-
-public class CLI {
-    public static void main(String[] args) throws Exception {
-        Scanner scanner = new Scanner(System.in);
-        NetconfManager netconf = new NetconfManager();
-
-        System.out.print("Enter Router IP: ");
-        String ip = scanner.nextLine();
-
-        netconf.connect(ip, 830, "admin", "admin123");
-
-        System.out.print("Retrieve config? (y/n): ");
-        if (scanner.nextLine().equalsIgnoreCase("y")) {
-            String config = netconf.getConfig("<interfaces/>");
-            System.out.println(config);
-            ConfigBackup.saveBackup(config);
+            // Authenticate user
+            if (authenticate()) {
+                System.out.println("Access granted to NETCONF Manager.");
+            } else {
+                System.out.println("Access denied.");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        System.out.print("Modify config? (y/n): ");
-        if (scanner.nextLine().equalsIgnoreCase("y")) {
-            netconf.editConfig("<interfaces><interface><name>Gig0/1</name><enabled>true</enabled></interface></interfaces>");
-        }
-
-        netconf.disconnect();
     }
 }
 
 
 ---
 
-Final Steps
+How to Use
 
-1. Run GNS3, start the router, and enable NETCONF.
+1. Run UserAuth.main() once to store credentials:
 
-
-2. Run CLI.java to interact with the router.
-
-
-3. Test configuration changes and backups.
+Enter Username: admin
+Enter Password: admin123
 
 
+2. Later, authenticate users before accessing NETCONF Manager.
 
-Let me know if you need help with testing!
+
+
+
+---
+
+This ensures secure storage of credentials for network devices. Let me know if you need modifications!
